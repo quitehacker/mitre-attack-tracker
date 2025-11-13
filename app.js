@@ -6,6 +6,7 @@ class MITREAttackTracker {
         this.techniques = [];
         this.tactics = [];
         this.dataSources = [];
+        this.dataComponents = [];
         this.detections = [];
         this.currentView = 'dashboard';
         this.editingDetectionId = null;
@@ -71,6 +72,36 @@ class MITREAttackTracker {
             }))
             .sort((a, b) => a.name.localeCompare(b.name));
 
+        // Extract data sources
+        const dataSourceObjects = this.attackData.objects.filter(obj => obj.type === 'x-mitre-data-source');
+        this.dataSources = dataSourceObjects.map(ds => {
+            const externalRefs = ds.external_references || [];
+            const mitreRef = externalRefs.find(ref => ref.source_name === 'mitre-attack');
+            return {
+                id: ds.id,
+                name: ds.name,
+                description: ds.description || '',
+                available: false,
+                externalId: mitreRef ? mitreRef.external_id : '',
+                url: mitreRef ? mitreRef.url : ''
+            };
+        }).sort((a, b) => a.name.localeCompare(b.name));
+
+        // Extract data components
+        const dataComponentObjects = this.attackData.objects.filter(obj => obj.type === 'x-mitre-data-component');
+        this.dataComponents = dataComponentObjects.map(dc => {
+            const externalRefs = dc.external_references || [];
+            const mitreRef = externalRefs.find(ref => ref.source_name === 'mitre-attack');
+            return {
+                id: dc.id,
+                name: dc.name,
+                description: dc.description || '',
+                dataSourceRef: dc.x_mitre_data_source_ref,
+                available: false,
+                externalId: mitreRef ? mitreRef.external_id : ''
+            };
+        }).sort((a, b) => a.name.localeCompare(b.name));
+
         // Extract techniques and sub-techniques
         this.techniques = this.attackData.objects
             .filter(obj => obj.type === 'attack-pattern' && !obj.revoked && !obj.deprecated)
@@ -87,10 +118,11 @@ class MITREAttackTracker {
                     .filter(phase => phase.kill_chain_name === 'mitre-attack')
                     .map(phase => phase.phase_name);
 
-                // Extract data sources
-                const dataSources = [];
+                // Extract data components from relationships
+                const dataComponentNames = [];
                 if (tech.x_mitre_data_sources) {
-                    dataSources.push(...tech.x_mitre_data_sources);
+                    // New format: data sources are actually "Data Source: Data Component" strings
+                    dataComponentNames.push(...tech.x_mitre_data_sources);
                 }
 
                 return {
@@ -101,7 +133,7 @@ class MITREAttackTracker {
                     isSubTechnique: isSubTechnique,
                     parentId: parentId,
                     tactics: techniqueTactics,
-                    dataSources: dataSources,
+                    dataComponents: dataComponentNames,
                     platforms: tech.x_mitre_platforms || [],
                     url: mitreRef ? mitreRef.url : ''
                 };
@@ -119,17 +151,7 @@ class MITREAttackTracker {
                 return aSubNum - bSubNum;
             });
 
-        // Extract unique data sources
-        const dataSourceSet = new Set();
-        this.techniques.forEach(tech => {
-            tech.dataSources.forEach(ds => dataSourceSet.add(ds));
-        });
-        this.dataSources = Array.from(dataSourceSet).sort().map(ds => ({
-            name: ds,
-            available: false
-        }));
-
-        console.log(`Loaded ${this.techniques.length} techniques, ${this.tactics.length} tactics, ${this.dataSources.length} data sources`);
+        console.log(`Loaded ${this.techniques.length} techniques, ${this.tactics.length} tactics, ${this.dataSources.length} data sources, ${this.dataComponents.length} data components`);
     }
 
     loadUserData() {
@@ -160,11 +182,28 @@ class MITREAttackTracker {
                 console.error('Error parsing saved sources:', e);
             }
         }
+
+        // Load data components availability from localStorage
+        const savedComponents = localStorage.getItem('mitre_components');
+        if (savedComponents) {
+            try {
+                const components = JSON.parse(savedComponents);
+                this.dataComponents.forEach(dc => {
+                    const saved = components.find(c => c.name === dc.name);
+                    if (saved) {
+                        dc.available = saved.available;
+                    }
+                });
+            } catch (e) {
+                console.error('Error parsing saved components:', e);
+            }
+        }
     }
 
     saveUserData() {
         localStorage.setItem('mitre_detections', JSON.stringify(this.detections));
         localStorage.setItem('mitre_sources', JSON.stringify(this.dataSources));
+        localStorage.setItem('mitre_components', JSON.stringify(this.dataComponents));
     }
 
     setupEventListeners() {
@@ -277,11 +316,24 @@ class MITREAttackTracker {
     }
 
     getAvailableDataSourcesForTechnique(technique) {
-        if (!technique.dataSources || technique.dataSources.length === 0) return 0;
+        if (!technique.dataComponents || technique.dataComponents.length === 0) return 0;
 
-        return technique.dataSources.filter(ds => {
-            const source = this.dataSources.find(s => s.name === ds);
-            return source && source.available;
+        // Data components are in format "Data Source: Data Component"
+        // Check if any of the data sources OR data components are marked as available
+        return technique.dataComponents.filter(dcName => {
+            // Check if this exact component name is available
+            const component = this.dataComponents.find(c => c.name === dcName);
+            if (component && component.available) return true;
+
+            // Also check if the data source part is available (for backward compatibility)
+            const parts = dcName.split(':');
+            if (parts.length > 0) {
+                const dataSourceName = parts[0].trim();
+                const source = this.dataSources.find(s => s.name === dataSourceName);
+                if (source && source.available) return true;
+            }
+
+            return false;
         }).length;
     }
 
@@ -496,7 +548,7 @@ class MITREAttackTracker {
                 const coverage = (this.calculateCoverage(tech) * 100).toFixed(0);
                 const detectionCount = this.getDetectionRulesForTechnique(tech.id);
                 const availableSources = this.getAvailableDataSourcesForTechnique(tech);
-                const totalSources = tech.dataSources.length;
+                const totalSources = tech.dataComponents.length;
 
                 html += `
                     <tr>
@@ -698,35 +750,45 @@ class MITREAttackTracker {
         if (!container) return;
 
         const searchTerm = document.getElementById('sourceSearch')?.value.toLowerCase() || '';
+
+        let html = `
+            <div class="sources-container">
+                <div class="sources-section">
+                    <h3>Data Sources (${this.dataSources.length})</h3>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Data Source</th>
+                                <th>ID</th>
+                                <th>Components</th>
+                                <th>Techniques</th>
+                                <th>Available</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+        `;
+
+        // Render Data Sources
         const filteredSources = this.dataSources.filter(ds =>
             !searchTerm || ds.name.toLowerCase().includes(searchTerm)
         );
 
-        let html = `
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Data Source</th>
-                        <th>Techniques Using Source</th>
-                        <th>Available</th>
-                    </tr>
-                </thead>
-                <tbody>
-        `;
-
         filteredSources.forEach(ds => {
+            const components = this.dataComponents.filter(dc => dc.dataSourceRef === ds.id);
             const techCount = this.techniques.filter(t =>
-                t.dataSources.includes(ds.name)
+                t.dataComponents.some(dcName => dcName.startsWith(ds.name + ':'))
             ).length;
 
             html += `
-                <tr>
+                <tr class="data-source-row">
                     <td><strong>${ds.name}</strong></td>
+                    <td><a href="${ds.url}" target="_blank" class="external-link">${ds.externalId || '-'}</a></td>
+                    <td>${components.length}</td>
                     <td>${techCount}</td>
                     <td>
                         <label class="toggle-switch">
                             <input type="checkbox" ${ds.available ? 'checked' : ''}
-                                onchange="app.toggleSourceAvailable('${ds.name}')">
+                                onchange="app.toggleSourceAvailable('${ds.name.replace(/'/g, "\\'")}')">
                             <span class="toggle-slider"></span>
                         </label>
                     </td>
@@ -734,7 +796,61 @@ class MITREAttackTracker {
             `;
         });
 
-        html += '</tbody></table>';
+        html += `
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="sources-section">
+                    <h3>Data Components (${this.dataComponents.length})</h3>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Data Component</th>
+                                <th>ID</th>
+                                <th>Data Source</th>
+                                <th>Techniques</th>
+                                <th>Available</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+        `;
+
+        // Render Data Components
+        const filteredComponents = this.dataComponents.filter(dc =>
+            !searchTerm || dc.name.toLowerCase().includes(searchTerm)
+        );
+
+        filteredComponents.forEach(dc => {
+            const parentSource = this.dataSources.find(ds => ds.id === dc.dataSourceRef);
+            const techCount = this.techniques.filter(t =>
+                t.dataComponents.includes(dc.name)
+            ).length;
+
+            html += `
+                <tr class="data-component-row">
+                    <td>${dc.name}</td>
+                    <td>${dc.externalId || '-'}</td>
+                    <td>${parentSource ? parentSource.name : 'Unknown'}</td>
+                    <td>${techCount}</td>
+                    <td>
+                        <label class="toggle-switch">
+                            <input type="checkbox" ${dc.available ? 'checked' : ''}
+                                onchange="app.toggleComponentAvailable('${dc.name.replace(/'/g, "\\'")}')">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </td>
+                </tr>
+            `;
+        });
+
+        html += `
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+
         container.innerHTML = html;
     }
 
@@ -747,13 +863,23 @@ class MITREAttackTracker {
         }
     }
 
+    toggleComponentAvailable(componentName) {
+        const component = this.dataComponents.find(dc => dc.name === componentName);
+        if (component) {
+            component.available = !component.available;
+            this.saveUserData();
+            this.renderCurrentView();
+        }
+    }
+
     // Import/Export functionality
     exportData() {
         const data = {
-            version: '1.0',
+            version: '2.0',
             exportDate: new Date().toISOString(),
             detections: this.detections,
-            dataSources: this.dataSources
+            dataSources: this.dataSources,
+            dataComponents: this.dataComponents
         };
 
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -782,6 +908,16 @@ class MITREAttackTracker {
                     // Merge with existing data sources
                     data.dataSources.forEach(imported => {
                         const existing = this.dataSources.find(ds => ds.name === imported.name);
+                        if (existing) {
+                            existing.available = imported.available;
+                        }
+                    });
+                }
+
+                if (data.dataComponents) {
+                    // Merge with existing data components
+                    data.dataComponents.forEach(imported => {
+                        const existing = this.dataComponents.find(dc => dc.name === imported.name);
                         if (existing) {
                             existing.available = imported.available;
                         }

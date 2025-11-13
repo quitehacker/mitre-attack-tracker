@@ -741,6 +741,47 @@ input:checked + .toggle-slider:before {
     transform: translateX(26px);
 }
 
+/* Data Sources Container */
+.sources-container {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+.sources-section {
+    background: white;
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+}
+
+.sources-section h3 {
+    padding: 1rem 1.5rem;
+    margin: 0;
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+    color: white;
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.data-source-row {
+    background-color: #f8f9fa;
+}
+
+.data-component-row {
+    background-color: white;
+}
+
+.external-link {
+    color: var(--primary-color);
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.external-link:hover {
+    text-decoration: underline;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
     .header {
