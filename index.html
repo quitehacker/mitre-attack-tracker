@@ -28,10 +28,7 @@
         <!-- Navigation -->
         <nav class="nav-tabs">
             <button class="nav-tab active" data-view="dashboard">
-                <span>📊</span> Dashboard
-            </button>
-            <button class="nav-tab" data-view="coverage">
-                <span>🎯</span> Coverage
+                <span>📊</span> Dashboard & Coverage
             </button>
             <button class="nav-tab" data-view="techniques">
                 <span>🔍</span> Techniques
@@ -54,6 +51,10 @@
         <main class="main-content">
             <!-- Dashboard View -->
             <div id="dashboard-view" class="view active">
+                <div class="version-info">
+                    <p>Based on <strong id="mitreVersion">MITRE ATT&CK</strong> | Data Source: <a href="https://github.com/mitre/cti" target="_blank">MITRE CTI GitHub</a></p>
+                </div>
+
                 <div class="dashboard-grid">
                     <div class="stat-card">
                         <h3>Total Techniques</h3>
@@ -78,16 +79,15 @@
                 </div>
 
                 <div class="dashboard-sections">
-                    <div class="dashboard-section">
-                        <h2>Coverage by Tactic</h2>
-                        <div id="tacticCoverage" class="tactic-coverage-grid"></div>
+                    <div class="dashboard-section full-width">
+                        <h2>ATT&CK Coverage Matrix</h2>
+                        <p class="section-description">Visual representation of detection coverage across tactics and techniques</p>
+                        <div id="coverageMatrix" class="coverage-matrix"></div>
                     </div>
 
                     <div class="dashboard-section">
-                        <h2>Recent Activity</h2>
-                        <div id="recentActivity" class="activity-list">
-                            <p class="empty-state">No recent activity</p>
-                        </div>
+                        <h2>Coverage by Tactic</h2>
+                        <div id="tacticCoverage" class="tactic-coverage-grid"></div>
                     </div>
 
                     <div class="dashboard-section">
@@ -112,15 +112,6 @@
                         </div>
                     </div>
                 </div>
-            </div>
-
-            <!-- Coverage View -->
-            <div id="coverage-view" class="view">
-                <div class="view-header">
-                    <h2>ATT&CK Coverage Matrix</h2>
-                    <p>Visual representation of detection coverage across tactics and techniques</p>
-                </div>
-                <div id="coverageMatrix" class="coverage-matrix"></div>
             </div>
 
             <!-- Techniques View -->

@@ -9,7 +9,7 @@ Welcome to the Enhanced MITRE ATT&CK® Coverage Tracker, designed for Security O
 
 ## 🌐 Web Application (NEW!)
 
-**Access the live web application here:** [MITRE ATT&CK Coverage Tracker](https://quitehacker.github.io/MITRE-ATTACK-Enterprise-Matrix-in-Excel-for-SOC/)
+**Access the live web application here:** [MITRE ATT&CK Coverage Tracker](https://quitehacker.github.io/mitre-attack-tracker/)
 
 The coverage tracker is now available as a fully web-based application that:
 - **Automatically fetches** the latest MITRE ATT&CK data from their official GitHub repository
@@ -28,7 +28,7 @@ The coverage tracker is now available as a fully web-based application that:
 - **Data Sources**: Track which data sources are available in your environment
 
 ### Getting Started with the Web App
-1. Visit the [web application](https://quitehacker.github.io/MITRE-ATTACK-Enterprise-Matrix-in-Excel-for-SOC/)
+1. Visit the [web application](https://quitehacker.github.io/mitre-attack-tracker/)
 2. Start adding your detection rules in the "Detections" tab
 3. Mark your available data sources in the "Data Sources" tab
 4. Monitor your coverage in real-time on the Dashboard

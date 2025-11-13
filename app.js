@@ -2,6 +2,7 @@
 class MITREAttackTracker {
     constructor() {
         this.attackData = null;
+        this.mitreVersion = 'Loading...';
         this.techniques = [];
         this.tactics = [];
         this.dataSources = [];
@@ -46,6 +47,18 @@ class MITREAttackTracker {
 
     processAttackData() {
         if (!this.attackData || !this.attackData.objects) return;
+
+        // Extract MITRE ATT&CK version
+        const identityObj = this.attackData.objects.find(obj => obj.type === 'identity' && obj.name === 'The MITRE Corporation');
+        if (identityObj && identityObj.created) {
+            const createdDate = new Date(identityObj.created);
+            this.mitreVersion = `MITRE ATT&CK (Updated: ${createdDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })})`;
+        }
+
+        // Try to extract spec version if available
+        if (this.attackData.spec_version) {
+            this.mitreVersion += ` | STIX ${this.attackData.spec_version}`;
+        }
 
         // Extract tactics
         this.tactics = this.attackData.objects
@@ -227,8 +240,6 @@ class MITREAttackTracker {
         switch(this.currentView) {
             case 'dashboard':
                 this.renderDashboard();
-                break;
-            case 'coverage':
                 this.renderCoverageView();
                 break;
             case 'techniques':
@@ -283,6 +294,12 @@ class MITREAttackTracker {
 
     // Dashboard rendering
     renderDashboard() {
+        // Update MITRE version
+        const versionElement = document.getElementById('mitreVersion');
+        if (versionElement) {
+            versionElement.textContent = this.mitreVersion;
+        }
+
         // Update statistics
         document.getElementById('totalTechniques').textContent = this.techniques.length;
         document.getElementById('totalDetections').textContent =
