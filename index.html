@@ -11,8 +11,11 @@
         <!-- Header -->
         <header class="header">
             <div class="header-content">
-                <h1>MITRE ATT&CK® Coverage Tracker</h1>
-                <p class="subtitle">Enterprise Matrix for SOC Teams</p>
+                <button id="sidebarToggle" class="sidebar-toggle-btn" aria-label="Toggle Sidebar">☰</button>
+                <div>
+                    <h1>MITRE ATT&CK® Coverage Tracker</h1>
+                    <p class="subtitle">Enterprise Matrix for SOC Teams</p>
+                </div>
             </div>
             <div class="header-actions">
                 <button id="exportBtn" class="btn btn-secondary">
@@ -25,18 +28,27 @@
             </div>
         </header>
 
-        <!-- Navigation -->
-        <nav class="nav-tabs">
-            <button class="nav-tab active" data-view="dashboard">
-                <span>📊</span> Dashboard & Coverage
-            </button>
-            <button class="nav-tab" data-view="techniques">
-                <span>🔍</span> Techniques
-            </button>
-            <button class="nav-tab" data-view="detections">
-                <span>🛡️</span> Detections
-            </button>
-        </nav>
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar" id="sidebar">
+            <nav class="sidebar-nav">
+                <button class="nav-item active" data-view="dashboard">
+                    <span class="nav-icon">📊</span>
+                    <span class="nav-text">Dashboard</span>
+                </button>
+                <button class="nav-item" data-view="coverage">
+                    <span class="nav-icon">🎯</span>
+                    <span class="nav-text">Coverage</span>
+                </button>
+                <button class="nav-item" data-view="detections">
+                    <span class="nav-icon">🛡️</span>
+                    <span class="nav-text">Detection Rules</span>
+                </button>
+                <button class="nav-item" data-view="techniques">
+                    <span class="nav-icon">🔍</span>
+                    <span class="nav-text">MITRE Techniques</span>
+                </button>
+            </nav>
+        </aside>
 
         <!-- Loading Indicator -->
         <div id="loadingIndicator" class="loading-indicator">
@@ -45,11 +57,12 @@
         </div>
 
         <!-- Main Content Area -->
-        <main class="main-content">
+        <main class="main-content" id="mainContent">
             <!-- Dashboard View -->
             <div id="dashboard-view" class="view active">
-                <div class="version-info">
-                    <p>Based on <strong id="mitreVersion">MITRE ATT&CK</strong> | Data Source: <a href="https://github.com/mitre/cti" target="_blank">MITRE CTI GitHub</a></p>
+                <div class="version-badge">
+                    <h2>MITRE ATT&CK <span id="mitreVersionNumber">v?</span></h2>
+                    <p class="version-details" id="mitreVersionDetails">Loading...</p>
                 </div>
 
                 <div class="dashboard-grid">
@@ -71,15 +84,11 @@
                 </div>
 
                 <div class="dashboard-sections">
-                    <div class="dashboard-section full-width">
-                        <h2>ATT&CK Coverage Matrix</h2>
-                        <p class="section-description">Visual representation of detection coverage across tactics and techniques</p>
-                        <div id="coverageMatrix" class="coverage-matrix"></div>
-                    </div>
-
                     <div class="dashboard-section">
-                        <h2>Coverage by Tactic</h2>
-                        <div id="tacticCoverage" class="tactic-coverage-grid"></div>
+                        <h2>Overall Coverage Progress</h2>
+                        <div class="spider-chart-container">
+                            <canvas id="spiderChart" width="500" height="500"></canvas>
+                        </div>
                     </div>
 
                     <div class="dashboard-section">
@@ -94,7 +103,29 @@
                                 <span class="value" id="noDetectionCount">0</span>
                             </div>
                         </div>
+                        <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">
+                            <p style="font-size: 0.85rem; color: var(--text-secondary);">
+                                Data Source: <a href="https://github.com/mitre/cti" target="_blank">MITRE CTI GitHub</a>
+                            </p>
+                        </div>
                     </div>
+                </div>
+            </div>
+
+            <!-- Coverage View -->
+            <div id="coverage-view" class="view">
+                <div class="view-header">
+                    <h2>ATT&CK Coverage Matrix</h2>
+                    <p>Detection coverage across tactics in kill chain order</p>
+                </div>
+
+                <div class="dashboard-section full-width">
+                    <div id="coverageMatrix" class="coverage-matrix"></div>
+                </div>
+
+                <div class="dashboard-section">
+                    <h2>Coverage by Tactic</h2>
+                    <div id="tacticCoverage" class="tactic-coverage-grid"></div>
                 </div>
             </div>
 

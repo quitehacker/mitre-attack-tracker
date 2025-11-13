@@ -47,17 +47,40 @@ class MITREAttackTracker {
     processAttackData() {
         if (!this.attackData || !this.attackData.objects) return;
 
-        // Extract MITRE ATT&CK version
-        const identityObj = this.attackData.objects.find(obj => obj.type === 'identity' && obj.name === 'The MITRE Corporation');
-        if (identityObj && identityObj.created) {
-            const createdDate = new Date(identityObj.created);
-            this.mitreVersion = `MITRE ATT&CK (Updated: ${createdDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })})`;
+        // Extract MITRE ATT&CK version number
+        this.mitreVersionNumber = 'v?';
+        this.mitreVersionDetails = '';
+
+        // Look for x-mitre-collection object which contains version info
+        const collectionObj = this.attackData.objects.find(obj => obj.type === 'x-mitre-collection');
+        if (collectionObj) {
+            // Extract version from x_mitre_version field
+            if (collectionObj.x_mitre_version) {
+                this.mitreVersionNumber = `v${collectionObj.x_mitre_version}`;
+            }
+            // Extract modified date
+            if (collectionObj.modified) {
+                const modifiedDate = new Date(collectionObj.modified);
+                this.mitreVersionDetails = `Updated: ${modifiedDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`;
+            }
         }
 
-        // Try to extract spec version if available
-        if (this.attackData.spec_version) {
-            this.mitreVersion += ` | STIX ${this.attackData.spec_version}`;
+        // Fallback to identity object for date if collection not found
+        if (!this.mitreVersionDetails) {
+            const identityObj = this.attackData.objects.find(obj => obj.type === 'identity' && obj.name === 'The MITRE Corporation');
+            if (identityObj && identityObj.created) {
+                const createdDate = new Date(identityObj.created);
+                this.mitreVersionDetails = `Created: ${createdDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`;
+            }
         }
+
+        // Add STIX version
+        if (this.attackData.spec_version) {
+            this.mitreVersionDetails += ` | STIX ${this.attackData.spec_version}`;
+        }
+
+        // Keep the old mitreVersion for compatibility
+        this.mitreVersion = `MITRE ATT&CK ${this.mitreVersionNumber}${this.mitreVersionDetails ? ' - ' + this.mitreVersionDetails : ''}`;
 
         // Extract tactics
         this.tactics = this.attackData.objects
@@ -132,9 +155,12 @@ class MITREAttackTracker {
     }
 
     setupEventListeners() {
+        // Sidebar toggle
+        document.getElementById('sidebarToggle').addEventListener('click', () => this.toggleSidebar());
+
         // Navigation
-        document.querySelectorAll('.nav-tab').forEach(tab => {
-            tab.addEventListener('click', (e) => {
+        document.querySelectorAll('.nav-item').forEach(item => {
+            item.addEventListener('click', (e) => {
                 const view = e.currentTarget.dataset.view;
                 this.switchView(view);
             });
@@ -175,10 +201,23 @@ class MITREAttackTracker {
         document.getElementById('statusFilter')?.addEventListener('change', () => this.renderTechniquesView());
     }
 
+    toggleSidebar() {
+        const appContainer = document.querySelector('.app-container');
+        const sidebar = document.getElementById('sidebar');
+
+        if (window.innerWidth <= 768) {
+            // Mobile: slide sidebar in/out
+            sidebar.classList.toggle('mobile-open');
+        } else {
+            // Desktop: collapse/expand
+            appContainer.classList.toggle('sidebar-collapsed');
+        }
+    }
+
     switchView(view) {
         // Update navigation
-        document.querySelectorAll('.nav-tab').forEach(tab => {
-            tab.classList.toggle('active', tab.dataset.view === view);
+        document.querySelectorAll('.nav-item').forEach(item => {
+            item.classList.toggle('active', item.dataset.view === view);
         });
 
         // Update views
@@ -188,12 +227,19 @@ class MITREAttackTracker {
 
         this.currentView = view;
         this.renderCurrentView();
+
+        // Close mobile sidebar after navigation
+        if (window.innerWidth <= 768) {
+            document.getElementById('sidebar').classList.remove('mobile-open');
+        }
     }
 
     renderCurrentView() {
         switch(this.currentView) {
             case 'dashboard':
                 this.renderDashboard();
+                break;
+            case 'coverage':
                 this.renderCoverageView();
                 break;
             case 'techniques':
@@ -228,9 +274,14 @@ class MITREAttackTracker {
     // Dashboard rendering
     renderDashboard() {
         // Update MITRE version
-        const versionElement = document.getElementById('mitreVersion');
-        if (versionElement) {
-            versionElement.textContent = this.mitreVersion;
+        const versionNumberElement = document.getElementById('mitreVersionNumber');
+        if (versionNumberElement) {
+            versionNumberElement.textContent = this.mitreVersionNumber;
+        }
+
+        const versionDetailsElement = document.getElementById('mitreVersionDetails');
+        if (versionDetailsElement) {
+            versionDetailsElement.textContent = this.mitreVersionDetails;
         }
 
         // Update statistics
@@ -258,8 +309,153 @@ class MITREAttackTracker {
         document.getElementById('detectedCount').textContent = statusCounts.detected;
         document.getElementById('noDetectionCount').textContent = statusCounts['not detected'];
 
-        // Render tactic coverage
-        this.renderTacticCoverage();
+        // Render spider chart
+        this.renderSpiderChart();
+    }
+
+    renderSpiderChart() {
+        const canvas = document.getElementById('spiderChart');
+        if (!canvas) return;
+
+        const ctx = canvas.getContext('2d');
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+        const radius = Math.min(centerX, centerY) - 80;
+
+        // Calculate coverage per tactic (in kill chain order)
+        const killChainOrder = [
+            'reconnaissance', 'resource-development', 'initial-access', 'execution',
+            'persistence', 'privilege-escalation', 'defense-evasion', 'credential-access',
+            'discovery', 'lateral-movement', 'collection', 'command-and-control',
+            'exfiltration', 'impact'
+        ];
+
+        const tacticData = killChainOrder.map(shortName => {
+            const tactic = this.tactics.find(t => t.shortName === shortName);
+            if (!tactic) return null;
+
+            const tacticTechniques = this.techniques.filter(tech =>
+                tech.tactics.includes(shortName)
+            );
+
+            let totalCoverage = 0;
+            tacticTechniques.forEach(tech => {
+                totalCoverage += this.calculateCoverage(tech);
+            });
+
+            const coveragePercent = tacticTechniques.length > 0
+                ? (totalCoverage / tacticTechniques.length) * 100
+                : 0;
+
+            return {
+                name: tactic.name,
+                coverage: coveragePercent
+            };
+        }).filter(t => t !== null);
+
+        // Clear canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Draw background circles
+        ctx.strokeStyle = '#e9ecef';
+        ctx.lineWidth = 1;
+        for (let i = 1; i <= 5; i++) {
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, (radius / 5) * i, 0, 2 * Math.PI);
+            ctx.stroke();
+        }
+
+        // Draw axes
+        const angleStep = (2 * Math.PI) / tacticData.length;
+        tacticData.forEach((tactic, index) => {
+            const angle = index * angleStep - Math.PI / 2;
+            const x = centerX + radius * Math.cos(angle);
+            const y = centerY + radius * Math.sin(angle);
+
+            // Draw axis line
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY);
+            ctx.lineTo(x, y);
+            ctx.strokeStyle = '#dee2e6';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+
+            // Draw label
+            const labelRadius = radius + 40;
+            const labelX = centerX + labelRadius * Math.cos(angle);
+            const labelY = centerY + labelRadius * Math.sin(angle);
+
+            ctx.fillStyle = '#495057';
+            ctx.font = '11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            // Wrap text for long tactic names
+            const words = tactic.name.split(' ');
+            if (words.length > 2) {
+                ctx.fillText(words.slice(0, 2).join(' '), labelX, labelY - 6);
+                ctx.fillText(words.slice(2).join(' '), labelX, labelY + 6);
+            } else {
+                ctx.fillText(tactic.name, labelX, labelY);
+            }
+        });
+
+        // Draw coverage polygon
+        ctx.beginPath();
+        tacticData.forEach((tactic, index) => {
+            const angle = index * angleStep - Math.PI / 2;
+            const distance = (tactic.coverage / 100) * radius;
+            const x = centerX + distance * Math.cos(angle);
+            const y = centerY + distance * Math.sin(angle);
+
+            if (index === 0) {
+                ctx.moveTo(x, y);
+            } else {
+                ctx.lineTo(x, y);
+            }
+        });
+        ctx.closePath();
+
+        // Fill polygon
+        ctx.fillStyle = 'rgba(0, 102, 204, 0.2)';
+        ctx.fill();
+
+        // Stroke polygon
+        ctx.strokeStyle = '#0066cc';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Draw data points
+        tacticData.forEach((tactic, index) => {
+            const angle = index * angleStep - Math.PI / 2;
+            const distance = (tactic.coverage / 100) * radius;
+            const x = centerX + distance * Math.cos(angle);
+            const y = centerY + distance * Math.sin(angle);
+
+            ctx.beginPath();
+            ctx.arc(x, y, 4, 0, 2 * Math.PI);
+            ctx.fillStyle = '#0066cc';
+            ctx.fill();
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        });
+
+        // Draw center point
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, 3, 0, 2 * Math.PI);
+        ctx.fillStyle = '#495057';
+        ctx.fill();
+
+        // Draw percentage labels on circles
+        ctx.fillStyle = '#6c757d';
+        ctx.font = '10px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto';
+        ctx.textAlign = 'right';
+        for (let i = 1; i <= 5; i++) {
+            const percent = (i * 20);
+            const y = centerY - (radius / 5) * i;
+            ctx.fillText(`${percent}%`, centerX - 10, y);
+        }
     }
 
     renderTacticCoverage() {
@@ -311,50 +507,87 @@ class MITREAttackTracker {
         const container = document.getElementById('coverageMatrix');
         if (!container) return;
 
-        // Group techniques by tactic
-        const tacticTechniques = {};
-        this.tactics.forEach(tactic => {
-            tacticTechniques[tactic.name] = this.techniques.filter(tech =>
-                tech.tactics.includes(tactic.shortName) && !tech.isSubTechnique
+        // Kill chain order
+        const killChainOrder = [
+            'reconnaissance', 'resource-development', 'initial-access', 'execution',
+            'persistence', 'privilege-escalation', 'defense-evasion', 'credential-access',
+            'discovery', 'lateral-movement', 'collection', 'command-and-control',
+            'exfiltration', 'impact'
+        ];
+
+        // Group techniques by tactic in kill chain order
+        const tacticGroups = killChainOrder.map(shortName => {
+            const tactic = this.tactics.find(t => t.shortName === shortName);
+            if (!tactic) return null;
+
+            const techniques = this.techniques.filter(tech =>
+                tech.tactics.includes(shortName) && !tech.isSubTechnique
             );
+
+            return {
+                tactic: tactic,
+                techniques: techniques
+            };
+        }).filter(g => g !== null);
+
+        // Calculate max techniques for table height
+        const maxTechniques = Math.max(...tacticGroups.map(g => g.techniques.length), 1);
+
+        let html = '<table class="matrix-table"><thead><tr>';
+
+        // Header row with tactic names
+        tacticGroups.forEach(group => {
+            const tacticTechniques = group.techniques;
+            let totalCoverage = 0;
+            tacticTechniques.forEach(tech => {
+                totalCoverage += this.calculateCoverage(tech);
+            });
+            const coveragePercent = tacticTechniques.length > 0
+                ? ((totalCoverage / tacticTechniques.length) * 100).toFixed(0)
+                : 0;
+
+            html += `<th>
+                <div style="font-weight: 600; margin-bottom: 0.25rem;">${group.tactic.name}</div>
+                <div style="font-size: 0.75rem; font-weight: normal; color: #6c757d;">
+                    ${coveragePercent}% (${tacticTechniques.length} techniques)
+                </div>
+            </th>`;
         });
 
-        let html = '<table class="matrix-table"><thead><tr><th>Tactic</th>';
-
-        // Get max techniques per tactic for column count
-        const maxTechniques = Math.max(...Object.values(tacticTechniques).map(t => t.length), 10);
-
-        for (let i = 1; i <= Math.min(maxTechniques, 10); i++) {
-            html += `<th>T${i}</th>`;
-        }
         html += '</tr></thead><tbody>';
 
-        this.tactics.forEach(tactic => {
-            const techniques = tacticTechniques[tactic.name] || [];
-            html += `<tr><td><strong>${tactic.name}</strong></td>`;
+        // Data rows - one row per technique position
+        for (let i = 0; i < maxTechniques; i++) {
+            html += '<tr>';
 
-            for (let i = 0; i < Math.min(maxTechniques, 10); i++) {
-                if (i < techniques.length) {
-                    const tech = techniques[i];
+            tacticGroups.forEach(group => {
+                if (i < group.techniques.length) {
+                    const tech = group.techniques[i];
                     const coverage = this.calculateCoverage(tech) * 100;
-                    const coverageClass = coverage >= 75 ? 'coverage-high' :
-                                        coverage >= 25 ? 'coverage-medium' :
-                                        coverage > 0 ? 'coverage-low' : 'coverage-none';
+                    const status = this.getTechniqueStatus(tech);
+                    const coverageClass = status === 'detected' ? 'coverage-high' : 'coverage-none';
 
                     html += `
                         <td class="coverage-cell ${coverageClass}" title="${tech.name}">
                             <a href="${tech.url}" target="_blank" class="technique-id">${tech.id}</a>
+                            <div style="font-size: 0.7rem; margin-top: 0.25rem; color: inherit; font-weight: normal; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                ${tech.name}
+                            </div>
                         </td>
                     `;
                 } else {
                     html += '<td class="coverage-cell coverage-none">-</td>';
                 }
-            }
+            });
+
             html += '</tr>';
-        });
+        }
 
         html += '</tbody></table>';
         container.innerHTML = html;
+
+        // Also render tactic coverage cards for the coverage view
+        this.renderTacticCoverage();
     }
 
     // Techniques View
