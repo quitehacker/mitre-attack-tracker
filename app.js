@@ -358,8 +358,11 @@ class MITREAttackTracker {
             this.detections.filter(d => d.isActive).length;
 
         const availableSourcesCount = this.dataSources.filter(ds => ds.available).length;
+        const availableComponentsCount = this.dataComponents.filter(dc => dc.available).length;
+        const totalDataPoints = this.dataSources.length + this.dataComponents.length;
+        const availableDataPoints = availableSourcesCount + availableComponentsCount;
         document.getElementById('availableSources').textContent =
-            `${availableSourcesCount}/${this.dataSources.length}`;
+            `${availableDataPoints}/${totalDataPoints}`;
 
         // Calculate overall coverage
         let totalCoverage = 0;
@@ -752,112 +755,143 @@ class MITREAttackTracker {
         const searchTerm = document.getElementById('sourceSearch')?.value.toLowerCase() || '';
 
         let html = `
-            <div class="sources-container">
-                <div class="sources-section">
-                    <h3>Data Sources (${this.dataSources.length})</h3>
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Data Source</th>
-                                <th>ID</th>
-                                <th>Components</th>
-                                <th>Techniques</th>
-                                <th>Available</th>
-                            </tr>
-                        </thead>
-                        <tbody>
+            <table class="data-table hierarchical-table">
+                <thead>
+                    <tr>
+                        <th style="width: 40%;">Data Source / Component</th>
+                        <th style="width: 12%;">ID</th>
+                        <th style="width: 18%;">Techniques</th>
+                        <th style="width: 18%;">Component Coverage</th>
+                        <th style="width: 12%;">Available</th>
+                    </tr>
+                </thead>
+                <tbody>
         `;
 
-        // Render Data Sources
+        // Render Data Sources with their Components hierarchically
         const filteredSources = this.dataSources.filter(ds =>
-            !searchTerm || ds.name.toLowerCase().includes(searchTerm)
+            !searchTerm || ds.name.toLowerCase().includes(searchTerm) ||
+            this.dataComponents.some(dc => dc.dataSourceRef === ds.id && dc.name.toLowerCase().includes(searchTerm))
         );
 
         filteredSources.forEach(ds => {
             const components = this.dataComponents.filter(dc => dc.dataSourceRef === ds.id);
+            const availableComponents = components.filter(dc => dc.available).length;
+
+            // Calculate techniques using this data source
             const techCount = this.techniques.filter(t =>
                 t.dataComponents.some(dcName => dcName.startsWith(ds.name + ':'))
             ).length;
 
+            // Data Source row
             html += `
-                <tr class="data-source-row">
-                    <td><strong>${ds.name}</strong></td>
+                <tr class="data-source-row ${ds.available ? 'source-available' : ''}">
+                    <td>
+                        <div class="source-name">
+                            <span class="expand-icon ${components.length > 0 ? 'expandable' : ''}"
+                                  onclick="app.toggleSourceExpand('${ds.id}')"
+                                  id="expand-${ds.id}">
+                                ${components.length > 0 ? '▶' : ''}
+                            </span>
+                            <strong>${ds.name}</strong>
+                            ${components.length > 0 ? `<span class="component-count">(${components.length} components)</span>` : ''}
+                        </div>
+                    </td>
                     <td><a href="${ds.url}" target="_blank" class="external-link">${ds.externalId || '-'}</a></td>
-                    <td>${components.length}</td>
-                    <td>${techCount}</td>
+                    <td><span class="badge">${techCount}</span></td>
+                    <td>
+                        <div class="progress-indicator">
+                            <span>${availableComponents}/${components.length}</span>
+                            ${components.length > 0 ? `
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: ${(availableComponents/components.length*100).toFixed(0)}%"></div>
+                                </div>
+                            ` : '-'}
+                        </div>
+                    </td>
                     <td>
                         <label class="toggle-switch">
-                            <input type="checkbox" ${ds.available ? 'checked' : ''}
-                                onchange="app.toggleSourceAvailable('${ds.name.replace(/'/g, "\\'")}')">
+                            <input type="checkbox"
+                                   ${ds.available ? 'checked' : ''}
+                                   onchange="app.toggleSourceAvailable('${ds.name.replace(/'/g, "\\'")}', true)">
                             <span class="toggle-slider"></span>
                         </label>
                     </td>
                 </tr>
             `;
+
+            // Data Component rows (initially hidden)
+            components.forEach(dc => {
+                const matchesSearch = !searchTerm || dc.name.toLowerCase().includes(searchTerm);
+                if (!matchesSearch && searchTerm) return; // Skip if doesn't match search
+
+                const techCount = this.techniques.filter(t =>
+                    t.dataComponents.includes(dc.name)
+                ).length;
+
+                html += `
+                    <tr class="data-component-row" id="component-${ds.id.replace(/[^a-zA-Z0-9]/g, '_')}" style="display: none;">
+                        <td>
+                            <div class="component-name">
+                                <span class="indent">└─</span>
+                                ${dc.name.split(':').length > 1 ? dc.name.split(':')[1].trim() : dc.name}
+                            </div>
+                        </td>
+                        <td>${dc.externalId || '-'}</td>
+                        <td><span class="badge badge-sm">${techCount}</span></td>
+                        <td>-</td>
+                        <td>
+                            <label class="toggle-switch toggle-sm">
+                                <input type="checkbox" ${dc.available ? 'checked' : ''}
+                                    onchange="app.toggleComponentAvailable('${dc.name.replace(/'/g, "\\'")}')">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </td>
+                    </tr>
+                `;
+            });
         });
 
-        html += `
-                        </tbody>
-                    </table>
-                </div>
-
-                <div class="sources-section">
-                    <h3>Data Components (${this.dataComponents.length})</h3>
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Data Component</th>
-                                <th>ID</th>
-                                <th>Data Source</th>
-                                <th>Techniques</th>
-                                <th>Available</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-        `;
-
-        // Render Data Components
-        const filteredComponents = this.dataComponents.filter(dc =>
-            !searchTerm || dc.name.toLowerCase().includes(searchTerm)
-        );
-
-        filteredComponents.forEach(dc => {
-            const parentSource = this.dataSources.find(ds => ds.id === dc.dataSourceRef);
-            const techCount = this.techniques.filter(t =>
-                t.dataComponents.includes(dc.name)
-            ).length;
-
-            html += `
-                <tr class="data-component-row">
-                    <td>${dc.name}</td>
-                    <td>${dc.externalId || '-'}</td>
-                    <td>${parentSource ? parentSource.name : 'Unknown'}</td>
-                    <td>${techCount}</td>
-                    <td>
-                        <label class="toggle-switch">
-                            <input type="checkbox" ${dc.available ? 'checked' : ''}
-                                onchange="app.toggleComponentAvailable('${dc.name.replace(/'/g, "\\'")}')">
-                            <span class="toggle-slider"></span>
-                        </label>
-                    </td>
-                </tr>
-            `;
-        });
+        if (filteredSources.length === 0) {
+            html += '<tr><td colspan="5" class="empty-state">No data sources found</td></tr>';
+        }
 
         html += `
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+                </tbody>
+            </table>
         `;
 
         container.innerHTML = html;
     }
 
-    toggleSourceAvailable(sourceName) {
+    toggleSourceExpand(sourceId) {
+        const icon = document.getElementById(`expand-${sourceId}`);
+        const cleanId = sourceId.replace(/[^a-zA-Z0-9]/g, '_');
+        const components = document.querySelectorAll(`[id^="component-${cleanId}"]`);
+
+        if (icon && components.length > 0) {
+            const isExpanded = icon.textContent.trim() === '▼';
+            icon.textContent = isExpanded ? '▶' : '▼';
+
+            components.forEach(comp => {
+                comp.style.display = isExpanded ? 'none' : 'table-row';
+            });
+        }
+    }
+
+    toggleSourceAvailable(sourceName, cascade = false) {
         const source = this.dataSources.find(ds => ds.name === sourceName);
         if (source) {
             source.available = !source.available;
+
+            // If cascade is true, also update all child components
+            if (cascade) {
+                const components = this.dataComponents.filter(dc => dc.dataSourceRef === source.id);
+                components.forEach(dc => {
+                    dc.available = source.available;
+                });
+            }
+
             this.saveUserData();
             this.renderCurrentView();
         }
