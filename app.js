@@ -152,6 +152,28 @@ class MITREAttackTracker {
             });
 
         console.log(`Loaded ${this.techniques.length} techniques, ${this.tactics.length} tactics, ${this.dataSources.length} data sources, ${this.dataComponents.length} data components`);
+
+        // Debug: Check sample data
+        if (this.dataSources.length > 0) {
+            console.log('Sample data source:', this.dataSources[0]);
+        }
+        if (this.dataComponents.length > 0) {
+            console.log('Sample data component:', this.dataComponents[0]);
+            console.log('Components per source:', this.dataSources.slice(0, 3).map(ds => ({
+                source: ds.name,
+                componentCount: this.dataComponents.filter(dc => dc.dataSourceRef === ds.id).length
+            })));
+        }
+        if (this.techniques.length > 0) {
+            const techWithData = this.techniques.find(t => t.dataComponents.length > 0);
+            if (techWithData) {
+                console.log('Sample technique with data components:', {
+                    id: techWithData.id,
+                    name: techWithData.name,
+                    dataComponents: techWithData.dataComponents.slice(0, 3)
+                });
+            }
+        }
     }
 
     loadUserData() {
