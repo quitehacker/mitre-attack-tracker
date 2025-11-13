@@ -36,9 +36,6 @@
             <button class="nav-tab" data-view="detections">
                 <span>🛡️</span> Detections
             </button>
-            <button class="nav-tab" data-view="sources">
-                <span>💾</span> Data Sources
-            </button>
         </nav>
 
         <!-- Loading Indicator -->
@@ -71,11 +68,6 @@
                         <div class="stat-value" id="overallCoverage">0%</div>
                         <p class="stat-label">Overall Detection Coverage</p>
                     </div>
-                    <div class="stat-card">
-                        <h3>Data Coverage</h3>
-                        <div class="stat-value" id="availableSources">0</div>
-                        <p class="stat-label">Sources & Components Available</p>
-                    </div>
                 </div>
 
                 <div class="dashboard-sections">
@@ -98,16 +90,8 @@
                                 <span class="value" id="detectedCount">0</span>
                             </div>
                             <div class="quick-stat">
-                                <span class="label">No Detection</span>
+                                <span class="label">Not Detected</span>
                                 <span class="value" id="noDetectionCount">0</span>
-                            </div>
-                            <div class="quick-stat">
-                                <span class="label">Inconsistent</span>
-                                <span class="value" id="inconsistentCount">0</span>
-                            </div>
-                            <div class="quick-stat">
-                                <span class="label">No Sources</span>
-                                <span class="value" id="noSourcesCount">0</span>
                             </div>
                         </div>
                     </div>
@@ -125,10 +109,8 @@
                         </select>
                         <select id="statusFilter" class="filter-select">
                             <option value="">All Status</option>
-                            <option value="detect">Detected</option>
-                            <option value="no detect">No Detection</option>
-                            <option value="inconsistent">Inconsistent</option>
-                            <option value="no sources">No Sources</option>
+                            <option value="detected">Detected</option>
+                            <option value="not detected">Not Detected</option>
                         </select>
                     </div>
                 </div>
@@ -146,17 +128,6 @@
                 <div id="detectionsTable" class="data-table-container"></div>
             </div>
 
-            <!-- Data Sources View -->
-            <div id="sources-view" class="view">
-                <div class="view-header">
-                    <h2>Data Sources</h2>
-                    <div class="view-actions">
-                        <input type="text" id="sourceSearch" placeholder="Search data sources..." class="search-input">
-                        <button id="toggleAllSources" class="btn btn-secondary">Toggle All</button>
-                    </div>
-                </div>
-                <div id="sourcesTable" class="data-table-container"></div>
-            </div>
         </main>
 
         <!-- Modal for Adding/Editing Detections -->
